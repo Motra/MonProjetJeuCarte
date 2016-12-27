@@ -1,0 +1,270 @@
+#include <stdio.h>
+
+#include "MD.h"
+
+char TexteCouleurMD[5][8] = {"", "Trefle", "Carreau", "Coeur", "Pique"};
+char TexteLigneStockage[5][8]={"","Stock1","Stock2","Stock3","Stock4"};
+booleen defaite;
+
+typedef Tas SerieCouleurMD;
+SerieCouleurMD LigneMD[DerniereCouleur+1];
+Tas LigneStockage[DerniereCouleur+1];/* tas de stockage*/
+Tas TalonMD;
+Localisation LocSeriesMD[DerniereCouleur+1];
+Localisation LocLigneStockage[DerniereCouleur+1];
+Localisation LocTalonMD;
+
+/* Formation du tableau de jeu initial */
+
+void SaisirLocTasMD()
+{
+  int i;
+
+  LocTalonMD.NC = 1;
+  LocTalonMD.NL = 1;
+  
+
+  for (i=PremiereCouleur; i<=DerniereCouleur; i++)
+    {
+      LocSeriesMD[i].NC = 2*i+2;
+      LocSeriesMD[i].NL = 1;
+      LocLigneStockage[i].NC = 2*i+2;
+      LocLigneStockage[i].NL = 3;
+    }
+}
+
+/* Création du tableau de jeu initial */
+
+void CreerTableauInitialMD()
+{
+  Couleur Co;    /* Co une variable de type Couleur*/
+  SaisirLocTasMD();
+  CreerJeuNeuf(32, LocTalonMD, &TalonMD); /*Créer un nouveau jeu */
+  BattreTas(&TalonMD); /* Mélanger le talon */
+
+/* Création de la ligne de couleurs ainsi que la ligne de stockage */
+ 
+  for (Co=PremiereCouleur; Co<=DerniereCouleur; Co++)
+    {
+      CreerTasVide(LocSeriesMD[Co], empile, &(LigneMD[Co]));
+      CreerTasVide(LocLigneStockage[Co], empile, &(LigneStockage[Co]));
+     
+    }
+}  
+
+/* On reforme le talon, en empilant les cartes de la ligne et le stockage */
+
+void ReformerTableauInitialMD()
+{
+  Couleur Co;
+
+  if(!TasVide(TalonMD)) /* Retourner le talon si il est pas vide*/ 
+  RetournerTas(&TalonMD);
+
+  for (Co=PremiereCouleur; Co<=DerniereCouleur; Co++)
+    {
+      PoserTasSurTas(&(LigneMD[Co]), &TalonMD); /* empiler les cartes de la ligne couleur et reformer le talon*/
+      PoserTasSurTas(&(LigneStockage[Co]), &TalonMD); /* empiler les cartes de la ligne stockage et reformer le talon*/
+    }
+  RetournerTas(&TalonMD); /* Retourner le talon si il est pas vide*/
+  BattreTas(&TalonMD); /*Mélanger les cartes du talon*/
+}
+
+/* Visualisation des états du jeu */
+
+void AfficherMD()
+{
+  Couleur Co;
+
+  EffacerGraphique();
+  AfficherTas(TalonMD, "Talon");
+  for (Co=PremiereCouleur; Co<=DerniereCouleur; Co++)
+   {
+   AfficherTas(LigneMD[Co], TexteCouleurMD[Co]);
+   AfficherTas(LigneStockage[Co], TexteLigneStockage[Co]);
+   }
+}
+
+
+/************************************  Montée   **********************************/
+
+/* R0: rang de la carte au dessus du talon */
+/* R1: rang de la carte au dessus du tas de la ligne couleur */
+
+void JouerTasMD(Tas *T, booleen *OK)
+{
+   
+  Couleur Co;
+  Rang R0, R1;
+  Co = LaCouleur(CarteSur(*T)); 
+  R0= LeRang(CarteSur(*T));
+   *OK = faux;
+
+/* Déplacer les cartes du rang 7 du talon dans les tas de la ligne Série (si c'est vide)*/
+
+if((R0==Sept)&&(TasVide(LigneMD[Co])))
+       {AttendreCliquer();
+       DeplacerHautSur(T, &(LigneMD[Co])); 
+      *OK=vrai;
+      }
+
+/* Déplacer la carte de dessus du Talon (ou du stock)sur le tas correspondant de la ligne SI
+le rang de la carte tirée est inférieure ou égale au rang de la carte dans la ligne couleur */
+
+if(!TasVide(LigneMD[Co]))
+         {
+         R1 =RangSuivant(LeRang(CarteSur(LigneMD[Co])));
+           if (R0== R1)
+            {AttendreCliquer();
+             DeplacerHautSur(T, &(LigneMD[Co]));
+              *OK=vrai;
+             }
+         }
+}
+
+void JouerUneMD(ModeTrace MT)
+{
+booleen OK,OK1,OK2; 
+/* OK : Résultat de montée talons vers la ligne */
+/* OK1: Résultat de descente talons vers le stockage */
+/* OK2: Résultat de montée stockage vers la ligne */
+
+Rang R0, R2;   /* R2: rang de la carte de dessus du tas de la ligne Stockage */
+
+int i;
+
+defaite=faux; /* defaite est vrai SI on ne peut pas deposer une carte ni sur la ligne ni sur les tas du  stockage */
+
+
+while (!defaite && !(TasVide(TalonMD))) { /* Tant que le talon n'est pas vide ET on pas encore perdu */
+	if (MT == AvecTrace) {
+		AfficherMD();
+		AttendreCliquer(); /* le joueur doit cliquer pour faire retourner la carte de dessus du talon */
+	}
+	
+	RetournerCarteSur(&TalonMD); /* Afficher la carte jouée du talon */
+        if (MT == AvecTrace)
+	      AfficherMD(); 
+	
+	JouerTasMD(&TalonMD,&OK); /* Jouer une carte du talon vers la ligne Série et affecter le résultat dans OK*/
+        if (MT == AvecTrace)
+	      AfficherMD(); 
+
+/**************************************** Descente: talon vers le stockage ***************************************/
+
+	
+  if(!OK) {  /* Si (OK est faux) c'est à dire: on n'a pas réussi à mettre une carte du talon(ou du stock) dans la ligne Série*/
+
+	i=1; /* Initialiser un compteur pour pointer sur le premeir tas du stockage*/
+	OK1=faux; /* OK1 est vrai si on déplace une carte du talon dans le stock sinon c'est faux */
+  	while(i<=4 && !OK1) { /* Si les tas de stockage ne sont pas vides */
+     		if(!TasVide(LigneStockage[i])) {
+         		R0= LeRang(CarteSur(TalonMD));
+         		R2 = LeRang(CarteSur(LigneStockage[i]));
+           		if (R0<=R2) {
+			    AttendreCliquer();
+             		    DeplacerHautSur(&TalonMD, &(LigneStockage[i])); /** Déplacer la carte du talon sur le tas du stockage correspondant Si R0<=R2 */
+                 		if (MT == AvecTrace) 
+	         			AfficherMD(); 
+             			OK1=vrai; /* Descente talons vers stockage a été effectuée*/
+            		             }
+     			else   /* Si R2>R0 on passe à tas du stockage suivant */
+            			i++;    
+		                                 }   
+
+     	else { /* un des tas de stockage est vide, &lors on déplace la carte jouée dans le stock: Descente*/
+           	AttendreCliquer();
+        	DeplacerHautSur(&TalonMD, &(LigneStockage[i]));
+             	if (MT == AvecTrace)
+	        AfficherMD(); 
+        	OK1=vrai; /* Descendre du talon vers stockage a été effectuée*/
+		}
+
+    	} 
+
+
+      if(!OK1)   /* Si OK = OK1= faux: La carte jouée ne peut se mettre ni sur la ligne ni dans le stock ALORS la partie est perdue ! */
+    
+      defaite=vrai;
+
+      
+   } 
+
+/*************************************************** Montée: du stockage vers la ligne Série ***********************************************************/
+
+	else { /** Si (OK=vrai) on a déplacé au moins une carte du talon dans la ligne Série */
+   		i=1; /* initiliser un compteur pour se positionner par rapport au tas du stockage*/
+   		OK2=faux; 
+   		while(i<=4) {
+    			if( !TasVide(LigneStockage[i])) {  /* Si le stock n'est pas vide*/
+    				JouerTasMD(&LigneStockage[i],&OK2); /* Jouer les cartes de stockage vers la ligne Série et affecter OK2 = Vrai ou faux*/
+     			        if (MT == AvecTrace)
+	      			  AfficherMD(); 
+			                                }
+    			else  OK2=faux; /* Si le Stock est vide alors OK2=faux*/
+
+    			if(OK2)
+    				i=1; /** pointer de nouveau sur le premier tas du stockage à chaque fois qu'on fait une montée*/
+    			  else
+    				i++; /* Sinon on passe au tas du stockage suivant */
+    		            }
+  	}
+
+               
+} /* fin de la boucle while*/ 
+
+/************************************ Afficher le résultat*******************/
+if (defaite==faux)
+	printf("Bravo !! vous avez gagné\n");
+else if(defaite==vrai){
+        RetournerCarteSur(&TalonMD);
+        /*AttendreCliquer();*/
+
+	printf("Mince! vous avez perdu\n");
+}      
+
+}
+		
+void ObserverMD(int NP)
+{
+  int i;
+
+  CreerTableauInitialMD();
+  JouerUneMD( AvecTrace);
+ for (i = 1; i <= NP-1; i++)
+    {
+      
+      ReformerTableauInitialMD();
+      JouerUneMD( AvecTrace);
+    }
+}
+
+int nbGagne;
+
+void AnalyserMD(int NP)
+
+{ int i,pc; 
+  /* CreerTableauInitialMD();*/
+  nbGagne=0;
+	
+  CreerTableauInitialMD();
+	
+  JouerUneMD(SansTrace);
+	
+
+if (defaite==faux)
+
+      nbGagne=nbGagne+1;
+
+for (i = 1; i <= NP-1; i++)
+    {
+	
+      ReformerTableauInitialMD();
+      JouerUneMD(SansTrace);
+    if (defaite==faux)
+      nbGagne=nbGagne+1;
+    }
+pc=nbGagne*100/NP;
+printf("%d",pc);
+
+}
